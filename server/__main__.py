@@ -20,26 +20,9 @@ service = BezierRenderService()
 @app.route("/")
 def index():
     frame = int(request.args.get("frame"))
-    num_frames = service.get_total_frames()
-    if frame >= num_frames:
-        return {"result": None}
-
-    block = []
-    if not service.config.DYNAMIC_BLOCK:
-        number_of_frames = min(frame + service.config.BLOCK_SIZE, num_frames) - frame
-        for i in range(frame, frame + number_of_frames):
-            block.append(service.frame_latex[i])
-    else:
-        number_of_frames = 0
-        total = 0
-        i = frame
-        while total < service.config.MAX_EXPR_PER_BLOCK:
-            if i >= len(service.frame_latex):
-                break
-            number_of_frames += 1
-            total += len(service.frame_latex[i])
-            block.append(service.frame_latex[i])
-            i += 1
+    block, number_of_frames = service.get_block(frame)
+    if not block:
+        return {"result": block}
     return json.dumps({"result": block, "number_of_frames": number_of_frames}) # Number_of_frames is the number of newly loaded frames, not the total frames
 
 

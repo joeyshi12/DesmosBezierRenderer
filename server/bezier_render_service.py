@@ -19,7 +19,7 @@ class BezierRenderService:
         self.frame = multiprocessing.Value('i', 0)
         self.height = multiprocessing.Value('i', 0, lock = False)
         self.width = multiprocessing.Value('i', 0, lock = False)
-        self.frame_latex = None
+        self.frame_latex = []
 
     def get_expressions(self, frame):
         exprid = 0
@@ -28,6 +28,29 @@ class BezierRenderService:
             exprid += 1
             exprs.append({'id': 'expr-' + str(exprid), 'latex': expr, 'color': self.config.COLOUR, 'secret': True})
         return exprs
+
+    def get_block(self, frame):
+        num_frames = self.get_total_frames()
+        if frame >= num_frames:
+            return None
+
+        block = []
+        if not self.config.DYNAMIC_BLOCK:
+            number_of_frames = min(frame + self.config.BLOCK_SIZE, num_frames) - frame
+            for i in range(frame, frame + number_of_frames):
+                block.append(self.frame_latex[i])
+        else:
+            number_of_frames = 0
+            total = 0
+            i = frame
+            while total < self.config.MAX_EXPR_PER_BLOCK:
+                if i >= len(self.frame_latex):
+                    break
+                number_of_frames += 1
+                total += len(self.frame_latex[i])
+                block.append(self.frame_latex[i])
+                i += 1
+        return block, number_of_frames
 
     def get_total_frames(self):
         return len(os.listdir(self.config.FRAME_DIR))
