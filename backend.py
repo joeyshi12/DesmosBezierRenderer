@@ -1,19 +1,17 @@
-import json
-from flask import Flask
-from flask_cors import CORS
-from flask import request
-
-from PIL import Image
-import numpy as np
-import potrace
-import cv2
-
-import multiprocessing
-from time import time
 import os
 import sys
 import getopt
 import traceback
+import multiprocessing
+from time import time
+
+import json
+from flask import Flask, request
+from flask_cors import CORS
+
+import numpy as np
+import potrace
+import cv2
 
 
 app = Flask(__name__)
@@ -26,7 +24,7 @@ MAX_EXPR_PER_BLOCK = 7500 # Maximum lines per block, doesn't affect lines per fr
 
 FRAME_DIR = 'frames' # The folder where the frames are stored relative to this file
 FILE_EXT = 'png' # Extension for frame files
-COLOUR = '#2464b4' # Hex value of colour for graph output	
+COLOUR = '#2464b4' # Hex value of colour for graph output
 
 BILATERAL_FILTER = False # Reduce number of lines with bilateral filter
 DOWNLOAD_IMAGES = False # Download each rendered frame automatically (works best in firefox)
@@ -39,7 +37,7 @@ width = multiprocessing.Value('i', 0, lock = False)
 frame_latex = 0
 
 
-def help():
+def print_help():
     print('backend.py -f <source> -e <extension> -c <colour> -b -d -l -g --static --block=<block size> --maxpblock=<max expressions per block>\n')
     print('\t-h\tGet help\n')
     print('-Render options\n')
@@ -80,8 +78,8 @@ def get_contours(filename, nudge = .33):
 
 
 def get_trace(data):
-    for i in range(len(data)):
-        data[i][data[i] > 1] = 1
+    for row in data:
+        row[row > 1] = 1
     bmp = potrace.Bitmap(data)
     path = bmp.trace(2, potrace.TURNPOLICY_MINORITY, 1.0, 1, .5)
     return path
@@ -99,15 +97,16 @@ def get_latex(filename):
             if segment.is_corner:
                 x1, y1 = segment.c
                 x2, y2 = segment.end_point
-                latex.append('((1-t)%f+t%f,(1-t)%f+t%f)' % (x0, x1, y0, y1))
-                latex.append('((1-t)%f+t%f,(1-t)%f+t%f)' % (x1, x2, y1, y2))
+                latex.append(f'((1-t){x0}+t{x1},(1-t){y0}+t{y1})')
+                latex.append(f'((1-t){x1}+t{x2},(1-t){y1}+t{y2})')
             else:
                 x1, y1 = segment.c1
                 x2, y2 = segment.c2
                 x3, y3 = segment.end_point
-                latex.append('((1-t)((1-t)((1-t)%f+t%f)+t((1-t)%f+t%f))+t((1-t)((1-t)%f+t%f)+t((1-t)%f+t%f)),\
-                (1-t)((1-t)((1-t)%f+t%f)+t((1-t)%f+t%f))+t((1-t)((1-t)%f+t%f)+t((1-t)%f+t%f)))' % \
-                (x0, x1, x1, x2, x1, x2, x2, x3, y0, y1, y1, y2, y1, y2, y2, y3))
+                latex.append(
+                    f'((1-t)((1-t)((1-t){x0}+t{x1})+t((1-t){x1}+t{x2}))+t((1-t)((1-t){x1}+t{x2})+t((1-t){x2}+t{x3})),\
+                    (1-t)((1-t)((1-t){y0}+t{y1})+t((1-t){y1}+t{y2}))+t((1-t)((1-t){y1}+t{y2})+t((1-t){y2}+t{y3})))'
+                )
             start = segment.end_point
     return latex
 
@@ -151,20 +150,18 @@ def init():
     return json.dumps({'height': height.value, 'width': width.value, 'total_frames': len(os.listdir(FRAME_DIR)), 'download_images': DOWNLOAD_IMAGES, 'show_grid': SHOW_GRID})
 
 
-if __name__ == '__main__':
-
+def init_options():
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hf:e:c:bdlg", ['static', 'block=', 'maxpblock='])
-
+        opts, _ = getopt.getopt(sys.argv[1:], "hf:e:c:bdlg", ['static', 'block=', 'maxpblock='])
     except getopt.GetoptError:
         print('Error: Invalid argument(s)\n')
-        help()
+        print_help()
         sys.exit(2)
 
     try:
         for opt, arg in opts:
             if opt == '-h':
-                help()
+                print_help()
                 sys.exit()
             elif opt == '-f':
                 FRAME_DIR = arg
@@ -187,19 +184,19 @@ if __name__ == '__main__':
             elif opt == '--maxpblock':
                 MAX_EXPR_PER_BLOCK = int(arg)
         frame_latex =  range(len(os.listdir(FRAME_DIR)))
-
     except TypeError:
         print('Error: Invalid argument(s)\n')
-        help()
+        print_help()
         sys.exit(2)
 
+
+def main():
+    init_options()
     with multiprocessing.Pool(processes = multiprocessing.cpu_count()) as pool:
         print('Desmos Bezier Renderer')
         print('Junferno 2021')
         print('https://github.com/kevinjycui/DesmosBezierRenderer')
-
         print('-----------------------------')
-
         print('Processing %d frames... Please wait for processing to finish before running on frontend\n' % len(os.listdir(FRAME_DIR)))
 
         start = time()
@@ -207,10 +204,16 @@ if __name__ == '__main__':
         try:
             frame_latex = pool.map(get_expressions, frame_latex)
         except cv2.error as e:
-            print('[ERROR] Unable to process one or more files. Remember image files should be named <DIRECTORY>/frame<INDEX>.<EXTENSION> where INDEX represents the frame number starting from 1 and DIRECTORY and EXTENSION are defined by command line arguments (e.g. frames/frame1.png). Please check if:\n\tThe files exist\n\tThe files are all valid image files\n\tThe name of the files given is correct as per command line arguments\n\tThe program has the necessary permissions to read the file.\n\nUse backend.py -h for further documentation\n')            
-
+            print('[ERROR] Unable to process one or more files. \
+                  Remember image files should be named <DIRECTORY>/frame<INDEX>.<EXTENSION> \
+                  where INDEX represents the frame number starting from 1 and DIRECTORY and EXTENSION are defined by command line arguments (e.g. frames/frame1.png). \
+                  Please check if: \
+                  \n\tThe files exist \
+                  \n\tThe files are all valid image files \
+                  \n\tThe name of the files given is correct as per command line arguments \
+                  \n\tThe program has the necessary permissions to read the file. \
+                  \n\nUse backend.py -h for further documentation\n')
             print('-----------------------------')
-
             print('Full error traceback:\n')
             traceback.print_exc()
             sys.exit(2)
@@ -221,3 +224,7 @@ if __name__ == '__main__':
         #     json.dump(frame_latex, f)
 
         app.run()
+
+
+if __name__ == '__main__':
+    main()
