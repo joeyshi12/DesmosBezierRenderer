@@ -72,7 +72,7 @@ def get_contours(filename, nudge = .33):
         frame.value += 1
         height.value = max(height.value, image.shape[0])
         width.value = max(width.value, image.shape[1])
-    print('\r--> Frame %d/%d' % (frame.value, len(os.listdir(FRAME_DIR))), end='')
+    print(f'\r--> Frame {frame.value}/{len(os.listdir(FRAME_DIR))}', end='')
 
     return edged[::-1]
 
@@ -147,7 +147,13 @@ def index():
 
 @app.route('/init')
 def init():
-    return json.dumps({'height': height.value, 'width': width.value, 'total_frames': len(os.listdir(FRAME_DIR)), 'download_images': DOWNLOAD_IMAGES, 'show_grid': SHOW_GRID})
+    return json.dumps({
+        'height': height.value,
+        'width': width.value,
+        'total_frames': len(os.listdir(FRAME_DIR)),
+        'download_images': DOWNLOAD_IMAGES,
+        'show_grid': SHOW_GRID
+    })
 
 
 def init_options():
@@ -197,13 +203,13 @@ def main():
         print('Junferno 2021')
         print('https://github.com/kevinjycui/DesmosBezierRenderer')
         print('-----------------------------')
-        print('Processing %d frames... Please wait for processing to finish before running on frontend\n' % len(os.listdir(FRAME_DIR)))
+        print(f'Processing {len(os.listdir(FRAME_DIR))} frames... Please wait for processing to finish before running on frontend\n')
 
         start = time()
 
         try:
             frame_latex = pool.map(get_expressions, frame_latex)
-        except cv2.error as e:
+        except cv2.error:
             print('[ERROR] Unable to process one or more files. \
                   Remember image files should be named <DIRECTORY>/frame<INDEX>.<EXTENSION> \
                   where INDEX represents the frame number starting from 1 and DIRECTORY and EXTENSION are defined by command line arguments (e.g. frames/frame1.png). \
@@ -218,7 +224,7 @@ def main():
             traceback.print_exc()
             sys.exit(2)
 
-        print('\r--> Processing complete in %.1f seconds\n' % (time() - start))
+        print(f'\r--> Processing complete in {(time() - start):.1f} seconds\n')
 
         # with open('cache.json', 'w+') as f:
         #     json.dump(frame_latex, f)
