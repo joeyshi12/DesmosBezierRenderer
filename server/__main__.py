@@ -1,5 +1,4 @@
 import sys
-import traceback
 import multiprocessing
 from time import time
 import json
@@ -31,48 +30,27 @@ def init():
     return json.dumps({
         "height": service.height.value,
         "width": service.width.value,
-        "total_frames": service.get_total_frames(),
+        "total_frames": service.num_frames,
         "download_images": service.config.DOWNLOAD_IMAGES,
         "show_grid": service.config.SHOW_GRID
     })
 
 
-
 def main():
-    service.config = util.get_config()
-    num_frames = service.get_total_frames()
-
+    service.set_config(util.get_config())
     with multiprocessing.Pool(processes = multiprocessing.cpu_count()) as pool:
-        print("Desmos Bezier Renderer")
-        print("Junferno 2021")
-        print("https://github.com/kevinjycui/DesmosBezierRenderer")
-        print("-----------------------------")
-        print(f"Processing {num_frames} frames... Please wait for processing to finish before running on frontend\n")
-
+        util.print_start_message(service.num_frames)
         start = time()
 
         try:
-            service.frame_latex = pool.map(service.get_expressions, range(num_frames))
+            service.init_frame_latex(pool)
         except cv2.error:
-            print("[ERROR] Unable to process one or more files. \
-                  Remember image files should be named <DIRECTORY>/frame<INDEX>.<EXTENSION> \
-                  where INDEX represents the frame number starting from 1 and DIRECTORY and EXTENSION are defined by command line arguments (e.g. frames/frame1.png). \
-                  Please check if: \
-                  \n\tThe files exist \
-                  \n\tThe files are all valid image files \
-                  \n\tThe name of the files given is correct as per command line arguments \
-                  \n\tThe program has the necessary permissions to read the file. \
-                  \n\nUse backend.py -h for further documentation\n")
-            print("-----------------------------")
-            print("Full error traceback:\n")
-            traceback.print_exc()
+            util.print_error_message()
             sys.exit(2)
 
         print(f"\r--> Processing complete in {(time() - start):.1f} seconds\n")
-
         # with open("cache.json", "w+") as f:
         #     json.dump(frame_latex, f)
-
         app.run()
 
 

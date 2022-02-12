@@ -1,42 +1,33 @@
 import os
 import multiprocessing
-import potrace
 import numpy as np
 import cv2
-
-
-def get_trace(data):
-    for row in data:
-        row[row > 1] = 1
-    bmp = potrace.Bitmap(data)
-    path = bmp.trace(2, potrace.TURNPOLICY_MINORITY, 1.0, 1, .5)
-    return path
+import util
 
 
 class BezierRenderService:
     def __init__(self):
         self.config = None
+        self.num_frames = 0
+        self.frame_latex = []
         self.frame = multiprocessing.Value('i', 0)
         self.height = multiprocessing.Value('i', 0, lock = False)
         self.width = multiprocessing.Value('i', 0, lock = False)
-        self.frame_latex = []
 
-    def get_expressions(self, frame):
-        exprid = 0
-        exprs = []
-        for expr in self._get_latex(f"/frame{frame+1}.{self.config.FILE_EXT}"):
-            exprid += 1
-            exprs.append({'id': 'expr-' + str(exprid), 'latex': expr, 'color': self.config.COLOUR, 'secret': True})
-        return exprs
+    def set_config(self, config):
+        self.config = config
+        self.num_frames = len(os.listdir(self.config.FRAME_DIR))
+
+    def init_frame_latex(self, pool):
+        self.frame_latex = pool.map(self.__get_expressions, range(self.num_frames))
 
     def get_block(self, frame):
-        num_frames = self.get_total_frames()
-        if frame >= num_frames:
+        if not self.config or frame >= self.num_frames:
             return None
 
         block = []
         if not self.config.DYNAMIC_BLOCK:
-            number_of_frames = min(frame + self.config.BLOCK_SIZE, num_frames) - frame
+            number_of_frames = min(frame + self.config.BLOCK_SIZE, self.num_frames) - frame
             for i in range(frame, frame + number_of_frames):
                 block.append(self.frame_latex[i])
         else:
@@ -52,12 +43,18 @@ class BezierRenderService:
                 i += 1
         return block, number_of_frames
 
-    def get_total_frames(self):
-        return len(os.listdir(self.config.FRAME_DIR))
+    def __get_expressions(self, frame):
+        exprid = 0
+        exprs = []
+        filename = f"/frame{frame+1}.{self.config.FILE_EXT}"
+        for expr in self.__get_latex(filename):
+            exprid += 1
+            exprs.append({'id': 'expr-' + str(exprid), 'latex': expr, 'color': self.config.COLOUR, 'secret': True})
+        return exprs
 
-    def _get_latex(self, filename):
+    def __get_latex(self, filename):
         latex = []
-        path = get_trace(self._get_contours(filename))
+        path = util.get_trace(self.__get_contours(filename))
 
         for curve in path.curves:
             segments = curve.segments
@@ -80,7 +77,8 @@ class BezierRenderService:
                 start = segment.end_point
         return latex
 
-    def _get_contours(self, filename, nudge = .33):
+    def __get_contours(self, filename, nudge = .33):
+        assert self.config
         image = cv2.imread(filename)
 
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -98,6 +96,6 @@ class BezierRenderService:
             self.frame.value += 1
             self.height.value = max(self.height.value, image.shape[0])
             self.width.value = max(self.width.value, image.shape[1])
-        print(f'\r--> Frame {self.frame.value}/{self.get_total_frames()}', end='')
+        print(f'\r--> Frame {self.frame.value}/{self.num_frames}', end='')
 
         return edged[::-1]
